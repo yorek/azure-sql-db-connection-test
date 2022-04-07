@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Timers;
 using Microsoft.Data.SqlClient;
 using DotNetEnv;
+using System.Diagnostics;
 
 namespace Azure.SQLDB.Samples.Connection
 {
@@ -11,6 +12,8 @@ namespace Azure.SQLDB.Samples.Connection
     {
         static volatile string detectedSLO = "N/A";
         static volatile string databaseName = "N/A";
+        static volatile int executionTime = 0;
+        static volatile int executionCount = 0;
         static void Main(string[] args)
         {
             Env.Load();
@@ -25,7 +28,7 @@ namespace Azure.SQLDB.Samples.Connection
             var options = new SqlRetryLogicOption()
             {
                 NumberOfTries = 5,
-                DeltaTime = TimeSpan.FromSeconds(10),
+                DeltaTime = TimeSpan.FromSeconds(5),
                 MaxTimeInterval = TimeSpan.FromSeconds(20),
                 TransientErrors = new List<int>() { 0, 35, 64 }
             };
@@ -46,7 +49,10 @@ namespace Azure.SQLDB.Samples.Connection
             var t = new System.Timers.Timer(1000);
             t.Elapsed += (_, e) =>
             {
-                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] DB: {databaseName} - SLO: {detectedSLO}");
+                int ec = Interlocked.Exchange(ref executionCount, 0);
+                int et = Interlocked.Exchange(ref executionTime, 0);
+                double ea = (double)et / (double)ec;
+                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] DB: {databaseName} - SLO: {detectedSLO} - EA: {ea:000.000} - EC: {ec}");
             };
             t.Start();
 
@@ -62,6 +68,7 @@ namespace Azure.SQLDB.Samples.Connection
             // Test 1
             if (args[0] == "test1")
             {
+                Stopwatch sw = new Stopwatch();
                 using (var conn = new SqlConnection(csb.ConnectionString))
                 {
                     conn.RetryLogicProvider = provider;
@@ -69,9 +76,14 @@ namespace Azure.SQLDB.Samples.Connection
                     cmd.RetryLogicProvider = provider;
                     while (true)
                     {
+                        sw.Start();
                         conn.Open();
                         detectedSLO = (string)cmd.ExecuteScalar();
                         conn.Close();
+                        sw.Stop();
+                        Interlocked.Add(ref executionCount, 1);
+                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
+                        sw.Reset();
                         Thread.Sleep(50);
                     }
                 }
@@ -80,6 +92,7 @@ namespace Azure.SQLDB.Samples.Connection
             // Test 2
             if (args[0] == "test2")
             {
+                Stopwatch sw = new Stopwatch();
                 while (true)
                 {
                     using (var conn = new SqlConnection(csb.ConnectionString))
@@ -87,8 +100,13 @@ namespace Azure.SQLDB.Samples.Connection
                         conn.RetryLogicProvider = provider;
                         var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
                         cmd.RetryLogicProvider = provider;
+                        sw.Start();
                         conn.Open();
                         detectedSLO = (string)cmd.ExecuteScalar();
+                        sw.Stop();
+                        Interlocked.Add(ref executionCount, 1);
+                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
+                        sw.Reset();
                     }
 
                     Thread.Sleep(50);
