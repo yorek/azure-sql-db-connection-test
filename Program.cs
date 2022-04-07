@@ -45,19 +45,20 @@ namespace Azure.SQLDB.Samples.Connection
             Console.WriteLine("Creating connection...");
             var connectionString = Environment.GetEnvironmentVariable("AZURE_CONNECTION_STRING");
             var csb = new SqlConnectionStringBuilder(connectionString);
-            var conn = new SqlConnection(csb.ConnectionString);
             databaseName = $"{csb.DataSource}@{csb.InitialCatalog}";
-            conn.RetryLogicProvider = provider;
-            Console.WriteLine($"Connection timeout: {conn.ConnectionTimeout}");
+            Console.WriteLine($"Connection timeout: {csb.ConnectTimeout}");
 
             Console.WriteLine("Starting loop. (CTRL+C to end)");
-            var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
-            cmd.RetryLogicProvider = provider;
             while(true)
             {
-                conn.Open();
-                detectedSLO = (string)cmd.ExecuteScalar();
-                conn.Close();
+                using(var conn = new SqlConnection(csb.ConnectionString))
+                {
+                    conn.RetryLogicProvider = provider;
+                    conn.Open();
+                    var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
+                    cmd.RetryLogicProvider = provider;
+                    detectedSLO = (string)cmd.ExecuteScalar();
+                } 
                 
                 Thread.Sleep(50);
             }           
