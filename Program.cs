@@ -49,25 +49,12 @@ namespace Azure.SQLDB.Samples.Connection
                 }
             };
 
-<<<<<<< HEAD
             // Console.WriteLine("Setting up monitor...");
             // var t = new System.Timers.Timer(1000);
             // t.Elapsed += (_, e) => {
             //     Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] DB: {databaseName} - SLO: {detectedSLO}");
             // };
             // t.Start();
-=======
-            Console.WriteLine("Setting up monitor...");
-            var t = new System.Timers.Timer(1000);
-            t.Elapsed += (_, e) =>
-            {
-                int ec = Interlocked.Exchange(ref executionCount, 0);
-                int et = Interlocked.Exchange(ref executionTime, 0);
-                double ea = (double)et / (double)ec;
-                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] DB: {databaseName} - SLO: {detectedSLO} - EA: {ea:000.000} - EC: {ec}");
-            };
-            t.Start();
->>>>>>> 1cfb443da5aa72624f047041ca9399a896b85dc7
 
             Console.WriteLine("Creating connection...");
             var connectionString = Environment.GetEnvironmentVariable("AZURE_CONNECTION_STRING");
@@ -87,53 +74,12 @@ namespace Azure.SQLDB.Samples.Connection
                     conn.RetryLogicProvider = provider;
                     var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
                     cmd.RetryLogicProvider = provider;
-<<<<<<< HEAD
                     detectedSLO = (string)cmd.ExecuteScalar();
                     Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss:fff")}] DB: {databaseName} - SLO: {detectedSLO}");
                 } 
                 
                 Thread.Sleep(500);
             }           
-=======
-                    while (true)
-                    {
-                        sw.Start();
-                        conn.Open();
-                        detectedSLO = (string)cmd.ExecuteScalar();
-                        conn.Close();
-                        sw.Stop();
-                        Interlocked.Add(ref executionCount, 1);
-                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
-                        sw.Reset();
-                        Thread.Sleep(50);
-                    }
-                }
-            }
-
-            // Test 2
-            if (args[0] == "test2")
-            {
-                Stopwatch sw = new Stopwatch();
-                while (true)
-                {
-                    using (var conn = new SqlConnection(csb.ConnectionString))
-                    {
-                        conn.RetryLogicProvider = provider;
-                        var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
-                        cmd.RetryLogicProvider = provider;
-                        sw.Start();
-                        conn.Open();
-                        detectedSLO = (string)cmd.ExecuteScalar();
-                        sw.Stop();
-                        Interlocked.Add(ref executionCount, 1);
-                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
-                        sw.Reset();
-                    }
-
-                    Thread.Sleep(50);
-                }
-            }
->>>>>>> 1cfb443da5aa72624f047041ca9399a896b85dc7
         }
 
 
