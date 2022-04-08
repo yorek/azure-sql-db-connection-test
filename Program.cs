@@ -34,11 +34,11 @@ namespace Azure.SQLDB.Samples.Connection
             };
 
             var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
-            provider.Retrying += (_, e) =>
+            provider.Retrying += (object s, SqlRetryingEventArgs e) =>
             {
                 databaseName = "N/A";
                 detectedSLO = "N/A";
-                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] Retrying...");
+                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] Retrying (Retry Count: {e.RetryCount}, Retry Delay: {e.Delay})... ");
                 foreach (var ex in e.Exceptions)
                 {
                     Console.WriteLine(ex.Message);
@@ -98,7 +98,7 @@ namespace Azure.SQLDB.Samples.Connection
                     using (var conn = new SqlConnection(csb.ConnectionString))
                     {
                         conn.RetryLogicProvider = provider;
-                        var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
+                        var cmd = new SqlCommand("select isnull(databasepropertyex(db_name(), 'ServiceObjective' ), 'Unknown') as SLO ", conn);
                         cmd.RetryLogicProvider = provider;
                         sw.Start();
                         conn.Open();
