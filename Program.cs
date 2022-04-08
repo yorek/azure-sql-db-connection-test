@@ -16,10 +16,13 @@ namespace Azure.SQLDB.Samples.Connection
         static volatile int executionTime = 0;
         static volatile int executionCount = 0;
 
+        static readonly string query = "waitfor delay '00:00:01'; select isnull(databasepropertyex(db_name(), 'ServiceObjective' ), 'Unknown') as SLO";
+
         static void Log(string message)
         {
             StackTrace stackTrace = new StackTrace();
             var caller = stackTrace.GetFrame(1).GetMethod().Name;
+            if (caller.Contains("Log")) caller = stackTrace.GetFrame(2).GetMethod().Name;
             Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] {caller} > {message}");
         }
 
@@ -31,34 +34,13 @@ namespace Azure.SQLDB.Samples.Connection
             if (args.GetLength(0) != 1)
             {
                 Console.WriteLine("Please specify which test you want to run");
-                Console.WriteLine("eg: dotnet run -- test1");
+                Console.WriteLine("eg: dotnet run -- [noretry|gooddev]");
                 return;
             }
 
-            Log("Setting up retry logic...");
-            var options = new SqlRetryLogicOption()
-            {
-                NumberOfTries = 5,
-                DeltaTime = TimeSpan.FromSeconds(5),
-                MaxTimeInterval = TimeSpan.FromSeconds(20),
-                TransientErrors = new List<int>() { 0, 35, 64 }
-            };
+            Monitor(60).Start();
 
-            var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
-            provider.Retrying += (object s, SqlRetryingEventArgs e) =>
-            {
-                databaseName = "N/A";
-                detectedSLO = "N/A";
-                Log($"Retrying (Retry Count: {e.RetryCount}, Retry Delay: {e.Delay})... ");
-                foreach (var ex in e.Exceptions)
-                {
-                    Log(ex.Message);
-                }
-            };
-
-            SetupMonitor(60).Start();
-
-            SetupSLOChanger(3 * 60).Start();
+            SLOChanger(3 * 60).Start();
 
             Log("Creating connection...");
             var connectionString = Environment.GetEnvironmentVariable("AZURE_CONNECTION_STRING");
@@ -72,58 +54,16 @@ namespace Azure.SQLDB.Samples.Connection
             Log("Starting loop. (CTRL+C to end)");
 
             // No Retry
-            if (args[0] == "noretry") TestNoRetryLogic(csb);            
+            if (args[0] == "noretry") TestNoRetryLogic(csb);
 
             // Test 1
-            if (args[0] == "test1")
-            {
-                Stopwatch sw = new Stopwatch();
-                using (var conn = new SqlConnection(csb.ConnectionString))
-                {
-                    conn.RetryLogicProvider = provider;
-                    var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
-                    cmd.RetryLogicProvider = provider;
-                    while (true)
-                    {
-                        sw.Start();
-                        conn.Open();
-                        detectedSLO = (string)cmd.ExecuteScalar();
-                        conn.Close();
-                        sw.Stop();
-                        Interlocked.Add(ref executionCount, 1);
-                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
-                        sw.Reset();
-                        Thread.Sleep(50);
-                    }
-                }
-            }
+            if (args[0] == "baddev") TestBadDeveloper(csb);
 
             // Test 2
-            if (args[0] == "test2")
-            {
-                Stopwatch sw = new Stopwatch();
-                while (true)
-                {
-                    using (var conn = new SqlConnection(csb.ConnectionString))
-                    {
-                        conn.RetryLogicProvider = provider;
-                        var cmd = new SqlCommand("select isnull(databasepropertyex(db_name(), 'ServiceObjective' ), 'Unknown') as SLO ", conn);
-                        cmd.RetryLogicProvider = provider;
-                        sw.Start();
-                        conn.Open();
-                        detectedSLO = (string)cmd.ExecuteScalar();
-                        sw.Stop();
-                        Interlocked.Add(ref executionCount, 1);
-                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
-                        sw.Reset();
-                    }
-
-                    Thread.Sleep(50);
-                }
-            }
+            if (args[0] == "gooddev") TestGoodDeveloper(csb);
         }
 
-        private static System.Timers.Timer SetupSLOChanger(int secs)
+        private static System.Timers.Timer SLOChanger(int secs)
         {
             Log("Setting up SLO changer...");
             Log($"SLO changer will change SLO every {secs} seconds");
@@ -143,7 +83,7 @@ namespace Azure.SQLDB.Samples.Connection
                     Log($"Request sent.");
                 }
                 catch (Exception ex)
-                {                    
+                {
                     LogExceptions("Exception while changing SLO", ex);
                 }
                 finally
@@ -155,7 +95,7 @@ namespace Azure.SQLDB.Samples.Connection
             return t;
         }
 
-        static System.Timers.Timer SetupMonitor(int secs)
+        static System.Timers.Timer Monitor(int secs)
         {
             Log("Setting up monitor...");
             Log($"Monitor will report every {secs} seconds");
@@ -182,7 +122,7 @@ namespace Azure.SQLDB.Samples.Connection
                 {
                     using (var conn = new SqlConnection(csb.ConnectionString))
                     {
-                        var cmd = new SqlCommand($"select isnull(databasepropertyex(db_name(), 'ServiceObjective' ), 'Unknown') as SLO ", conn);
+                        var cmd = new SqlCommand(query, conn);
                         sw.Start();
                         conn.Open();
                         //Thread.Sleep(waitMsec);
@@ -194,11 +134,118 @@ namespace Azure.SQLDB.Samples.Connection
                     }
                 }
                 catch (Exception ex)
-                {                    
+                {
                     LogExceptions("Exception trapped while running test", ex);
-                }                
+                }
 
                 Thread.Sleep(waitMsec);
+            }
+        }
+
+        static void TestGoodDeveloper(SqlConnectionStringBuilder csb)
+        {
+            int waitMsec = 50;
+
+            var options = new SqlRetryLogicOption()
+            {
+                NumberOfTries = 5,
+                DeltaTime = TimeSpan.FromSeconds(5),
+                MaxTimeInterval = TimeSpan.FromSeconds(20)
+            };
+
+            var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
+            provider.Retrying += (object s, SqlRetryingEventArgs e) =>
+            {
+                databaseName = "N/A";
+                detectedSLO = "N/A";
+
+                foreach (var ex in e.Exceptions)
+                {
+                    Log($"Retrying called due to error {(ex as SqlException).Number}");
+                }
+
+                Log($"Retrying (Retry Count: {e.RetryCount}, Retry Delay: {e.Delay})... ");
+            };
+
+            Stopwatch sw = new Stopwatch();
+            while (true)
+            {
+                try
+                {
+                    using (var conn = new SqlConnection(csb.ConnectionString))
+                    {
+                        conn.RetryLogicProvider = provider;
+                        var cmd = new SqlCommand(query, conn);
+                        cmd.RetryLogicProvider = provider;
+                        sw.Start();
+                        conn.Open();
+                        //Thread.Sleep(waitMsec);
+                        detectedSLO = (string)cmd.ExecuteScalar();
+                        sw.Stop();
+                        Interlocked.Add(ref executionCount, 1);
+                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
+                        sw.Reset();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogExceptions("Exception trapped while running test", ex);
+                }
+
+                Thread.Sleep(waitMsec);
+            }
+        }
+
+        static void TestBadDeveloper(SqlConnectionStringBuilder csb)
+        {
+            int waitMsec = 50;
+
+            var options = new SqlRetryLogicOption()
+            {
+                NumberOfTries = 5,
+                DeltaTime = TimeSpan.FromSeconds(5),
+                MaxTimeInterval = TimeSpan.FromSeconds(20)
+            };
+
+            var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
+            provider.Retrying += (object s, SqlRetryingEventArgs e) =>
+            {
+                databaseName = "N/A";
+                detectedSLO = "N/A";
+
+                foreach (var ex in e.Exceptions)
+                {
+                    Log($"Retrying called due to error {(ex as SqlException).Number}");
+                }
+
+                Log($"Retrying (Retry Count: {e.RetryCount}, Retry Delay: {e.Delay})... ");
+            };
+
+            Stopwatch sw = new Stopwatch();
+            using (var conn = new SqlConnection(csb.ConnectionString))
+            {
+                conn.RetryLogicProvider = provider;
+                var cmd = new SqlCommand(query, conn);
+                cmd.RetryLogicProvider = provider;
+                while (true)
+                {
+                    try
+                    {
+                        sw.Start();
+                        conn.Open();
+                        detectedSLO = (string)cmd.ExecuteScalar();
+                        conn.Close();
+                        sw.Stop();
+                        Interlocked.Add(ref executionCount, 1);
+                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
+                        sw.Reset();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogExceptions("Exception trapped while running test", ex);
+                    }
+                    Thread.Sleep(waitMsec);
+                }
             }
         }
 
@@ -208,14 +255,17 @@ namespace Azure.SQLDB.Samples.Connection
             var cx = ex;
             while (cx != null)
             {
-                if (cx is SqlException) {
+                if (cx is SqlException)
+                {
                     var sx = cx as SqlException;
                     Log($"Number: {sx.Number}, Message: {sx.Message}");
-                } else {
-                    Log(cx.Message);                    
+                }
+                else
+                {
+                    Log(cx.Message);
                 }
                 cx = cx.InnerException;
-            }         
+            }
         }
     }
 }
