@@ -21,7 +21,7 @@ namespace Azure.SQLDB.Samples.Connection
                 NumberOfTries = 5,
                 DeltaTime = TimeSpan.FromSeconds(10),
                 MaxTimeInterval = TimeSpan.FromSeconds(20),
-                TransientErrors = new List<int>() {0, 35, 64}                        
+                TransientErrors = new List<int>() {0, 35, 64, 40615}                        
             };
 
             var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
@@ -35,12 +35,12 @@ namespace Azure.SQLDB.Samples.Connection
                 }
             };
 
-            Console.WriteLine("Setting up monitor...");
-            var t = new System.Timers.Timer(1000);
-            t.Elapsed += (_, e) => {
-                Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] DB: {databaseName} - SLO: {detectedSLO}");
-            };
-            t.Start();
+            // Console.WriteLine("Setting up monitor...");
+            // var t = new System.Timers.Timer(1000);
+            // t.Elapsed += (_, e) => {
+            //     Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")}] DB: {databaseName} - SLO: {detectedSLO}");
+            // };
+            // t.Start();
 
             Console.WriteLine("Creating connection...");
             var connectionString = Environment.GetEnvironmentVariable("AZURE_CONNECTION_STRING");
@@ -58,10 +58,13 @@ namespace Azure.SQLDB.Samples.Connection
                     var cmd = new SqlCommand("select databasepropertyex(db_name(), 'ServiceObjective' ) as SLO ", conn);
                     cmd.RetryLogicProvider = provider;
                     detectedSLO = (string)cmd.ExecuteScalar();
+                    Console.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss:fff")}] DB: {databaseName} - SLO: {detectedSLO}");
                 } 
                 
-                Thread.Sleep(50);
+                Thread.Sleep(500);
             }           
         }
+
+
     }
 }
