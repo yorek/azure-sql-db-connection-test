@@ -16,7 +16,7 @@ namespace Azure.SQLDB.Samples.Connection
         static volatile int executionTime = 0;
         static volatile int executionCount = 0;
 
-        static readonly string query = "waitfor delay '00:00:01'; select isnull(databasepropertyex(db_name(), 'ServiceObjective' ), 'Unknown') as SLO";
+        static readonly string query = "declare @result sysname; select @result = cast(databasepropertyex(db_name(), 'ServiceObjective' ) as sysname); waitfor delay '00:00:01.000'; select @result as SLO;";
 
         static void Log(string message)
         {
@@ -34,7 +34,7 @@ namespace Azure.SQLDB.Samples.Connection
             if (args.GetLength(0) != 1)
             {
                 Console.WriteLine("Please specify which test you want to run");
-                Console.WriteLine("eg: dotnet run -- [noretry|gooddev]");
+                Console.WriteLine("eg: dotnet run -- [noretry|good|bad]");
                 return;
             }
 
@@ -53,14 +53,10 @@ namespace Azure.SQLDB.Samples.Connection
             Log($"Running: {args[0]}");
             Log("Starting loop. (CTRL+C to end)");
 
-            // No Retry
             if (args[0] == "noretry") TestNoRetryLogic(csb);
-
-            // Test 1
-            if (args[0] == "baddev") TestBadDeveloper(csb);
-
-            // Test 2
-            if (args[0] == "gooddev") TestGoodDeveloper(csb);
+            else if (args[0] == "bad") TestBadCode(csb);
+            else if (args[0] == "good") TestGoodCode(csb);
+            else Log("Unknown option. Terminating.");
         }
 
         private static System.Timers.Timer SLOChanger(int secs)
@@ -142,7 +138,7 @@ namespace Azure.SQLDB.Samples.Connection
             }
         }
 
-        static void TestGoodDeveloper(SqlConnectionStringBuilder csb)
+        static void TestGoodCode(SqlConnectionStringBuilder csb)
         {
             int waitMsec = 50;
 
@@ -196,7 +192,7 @@ namespace Azure.SQLDB.Samples.Connection
             }
         }
 
-        static void TestBadDeveloper(SqlConnectionStringBuilder csb)
+        static void TestBadCode(SqlConnectionStringBuilder csb)
         {
             int waitMsec = 50;
 
