@@ -146,18 +146,34 @@ namespace Azure.SQLDB.Samples.Connection
             {
                 NumberOfTries = 5,
                 DeltaTime = TimeSpan.FromSeconds(5),
-                MaxTimeInterval = TimeSpan.FromSeconds(20)
+                MaxTimeInterval = TimeSpan.FromSeconds(60),
+                TransientErrors = new int[] {0,64,40615}
             };
 
-            var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
-            provider.Retrying += (object s, SqlRetryingEventArgs e) =>
+            var cnnProvider = SqlConfigurableRetryFactory.CreateFixedRetryProvider(options);
+            var cmdProvider = SqlConfigurableRetryFactory.CreateFixedRetryProvider(options);
+
+            cnnProvider.Retrying += (object s, SqlRetryingEventArgs e) =>
             {
                 databaseName = "N/A";
                 detectedSLO = "N/A";
 
                 foreach (var ex in e.Exceptions)
                 {
-                    Log($"Retrying called due to error {(ex as SqlException).Number}");
+                    Log($"Retrying called in connection opening due to error {(ex as SqlException).Number} - {ex.Message}");
+                }
+
+                Log($"Retrying (Retry Count: {e.RetryCount}, Retry Delay: {e.Delay})... ");
+            };
+
+            cmdProvider.Retrying += (object s, SqlRetryingEventArgs e) =>
+            {
+                databaseName = "N/A";
+                detectedSLO = "N/A";
+
+                foreach (var ex in e.Exceptions)
+                {
+                    Log($"Retrying called in command execution due to error {(ex as SqlException).Number} - {ex.Message}");
                 }
 
                 Log($"Retrying (Retry Count: {e.RetryCount}, Retry Delay: {e.Delay})... ");
@@ -166,13 +182,13 @@ namespace Azure.SQLDB.Samples.Connection
             Stopwatch sw = new Stopwatch();
             while (true)
             {
-                try
-                {
+                // try
+                // {
                     using (var conn = new SqlConnection(csb.ConnectionString))
                     {
-                        conn.RetryLogicProvider = provider;
+                        conn.RetryLogicProvider = cnnProvider;
                         var cmd = new SqlCommand(query, conn);
-                        cmd.RetryLogicProvider = provider;
+                        cmd.RetryLogicProvider = cmdProvider;
                         sw.Start();
                         conn.Open();
                         //Thread.Sleep(waitMsec);
@@ -182,11 +198,11 @@ namespace Azure.SQLDB.Samples.Connection
                         Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
                         sw.Reset();
                     }
-                }
-                catch (Exception ex)
-                {
-                    LogExceptions("Exception trapped while running test", ex);
-                }
+                // }
+                // catch (Exception ex)
+                // {
+                //     LogExceptions("Exception trapped while running test", ex);
+                // }
 
                 Thread.Sleep(waitMsec);
             }
