@@ -20,7 +20,7 @@ dotnet run -- good
 
 ## Notes
 
-Then test program will execute the following query in an infinite loop:
+The test program will execute the following query in an infinite loop:
 
 ```sql
 declare @result sysname; 
@@ -31,7 +31,7 @@ select @result as SLO;
 ```
 and will report *every minute* information on average execution time (`EA`) and how many executions (`EC`) where done in a minute.
 
-The test program has a generic exception handler that will catch **all** unhandled exception, and will simply log them, then the loop will restart.
+The test program has a generic exception handler that will catch **all** unhandled exception (even those not handled by the Retry Logic), and will simply log them, then the loop will restart.
 
 A SLO change will be issued every 3 minutes.
 
