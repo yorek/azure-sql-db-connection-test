@@ -6,6 +6,7 @@ using Microsoft.Data.SqlClient;
 using DotNetEnv;
 using System.Diagnostics;
 using Dapper;
+using Polly;
 
 namespace Azure.SQLDB.Samples.Connection
 {
@@ -56,6 +57,7 @@ namespace Azure.SQLDB.Samples.Connection
             if (args[0] == "noretry") TestNoRetryLogic(csb);
             else if (args[0] == "bad") TestBadCode(csb);
             else if (args[0] == "good") TestGoodCode(csb);
+            else if (args[0] == "polly") TestPolly(csb);
             else Log("Unknown option. Terminating.");
         }
 
@@ -155,7 +157,6 @@ namespace Azure.SQLDB.Samples.Connection
 
             cnnProvider.Retrying += (object s, SqlRetryingEventArgs e) =>
             {
-                databaseName = "N/A";
                 detectedSLO = "N/A";
 
                 foreach (var ex in e.Exceptions)
@@ -168,7 +169,6 @@ namespace Azure.SQLDB.Samples.Connection
 
             cmdProvider.Retrying += (object s, SqlRetryingEventArgs e) =>
             {
-                databaseName = "N/A";
                 detectedSLO = "N/A";
 
                 foreach (var ex in e.Exceptions)
@@ -222,7 +222,6 @@ namespace Azure.SQLDB.Samples.Connection
             var provider = SqlConfigurableRetryFactory.CreateExponentialRetryProvider(options);
             provider.Retrying += (object s, SqlRetryingEventArgs e) =>
             {
-                databaseName = "N/A";
                 detectedSLO = "N/A";
 
                 foreach (var ex in e.Exceptions)
@@ -261,6 +260,50 @@ namespace Azure.SQLDB.Samples.Connection
             }
         }
 
+        
+        static void TestPolly(SqlConnectionStringBuilder csb)
+        {
+            int waitMsec = 50;
+
+            var p = Policy
+                .Handle<SqlException>()
+                .RetryForever(onRetry: (e, c) =>
+                {                    
+                    detectedSLO = "N/A";
+
+                    LogExceptions("Retry called due to SqlException", e);
+
+                    Log($"Retrying (Retry Count: {c.Count})... ");                    
+                });
+
+            Stopwatch sw = new Stopwatch();
+            while (true)
+            {
+                try
+                {
+                    p.Execute(() => {
+                        using (var conn = new SqlConnection(csb.ConnectionString))
+                        {
+                            var cmd = new SqlCommand(query, conn);
+                            sw.Start();
+                            conn.Open();
+                            detectedSLO = (string)cmd.ExecuteScalar();
+                            sw.Stop();
+                            Interlocked.Add(ref executionCount, 1);
+                            Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
+                            sw.Reset();
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    LogExceptions("Exception trapped while running test", ex);
+                }
+
+                Thread.Sleep(waitMsec);
+            }
+        }
+        
         static void LogExceptions(string message, Exception ex)
         {
             Log(message);
