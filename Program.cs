@@ -145,7 +145,7 @@ namespace Azure.SQLDB.Samples.Connection
 
                 foreach (var ex in e.Exceptions)
                 {
-                    Log($"Retrying called in {s.GetType().Name} due to {ex.GetType().Name} - {(ex as SqlException).Number} - {ex.Message}");
+                    Log($"Retrying called due to {ex.GetType().Name} - {(ex as SqlException).Number} - {ex.Message}");
                 }
 
                 Log($"Retrying (Retry Count: {e.RetryCount + 1}, Retry Delay: {e.Delay})... ");
@@ -244,6 +244,7 @@ namespace Azure.SQLDB.Samples.Connection
         }
     }
 
+    // Original code from: https://github.com/dotnet/efcore/blob/main/src/EFCore.SqlServer/Storage/Internal/SqlServerTransientExceptionDetector.cs
     // TO ADD: https://docs.microsoft.com/en-us/dotnet/api/microsoft.data.sqlclient.sqlconfigurableretryfactory?view=sqlclient-dotnet-standard-4.1
     public static class SqlServerTransientExceptionDetector
     {
