@@ -136,13 +136,11 @@ namespace Azure.SQLDB.Samples.Connection
                 NumberOfTries = 5,
                 DeltaTime = TimeSpan.FromSeconds(5),
                 MaxTimeInterval = TimeSpan.FromSeconds(60),
-                TransientErrors = new int[] { 0, 64, 40615 }
+                TransientErrors = new int[] { 0, 64, 18456, 40615 }
             };
 
             EventHandler<SqlRetryingEventArgs> retryEvent = (object s, SqlRetryingEventArgs e) =>
             {
-                detectedSLO = "N/A";
-
                 foreach (var ex in e.Exceptions)
                 {
                     Log($"Retrying called due to {ex.GetType().Name} - {(ex as SqlException).Number} - {ex.Message}");
@@ -157,27 +155,40 @@ namespace Azure.SQLDB.Samples.Connection
             var cmdProvider = SqlConfigurableRetryFactory.CreateFixedRetryProvider(options);
             cmdProvider.Retrying += retryEvent;
 
+            var database = "N/A";
+            var server = "N/A";
+            var sw = new Stopwatch();         
             while (true)
             {
+                sw.Start();
                 try
                 {
                     using (var cnn = new SqlConnection(csb.ConnectionString))
                     {
+                        //cnn.RetryLogicProvider = cnnProvider;
                         var cmd = new SqlCommand(query, cnn);
-                        cnn.RetryLogicProvider = cnnProvider;
-                        cnn.Open();
+                        //cmd.RetryLogicProvider = cmdProvider;
                         detectedSLO = cmdProvider.Execute<string>(null, () =>
                         {
-                            detectedSLO = (string)cmd.ExecuteScalar();
+                            cnn.Open();
+                            var result = (string)cmd.ExecuteScalar();
+                            var resultItems = result.Split('@');
+                            detectedSLO = resultItems[0];
+                            server = resultItems[1];
+                            database = cnn.Database;
+                            cnn.Close();
                             return detectedSLO;
-                        });
-                        cnn.Close();
-                        Log($"Detected SLO: {detectedSLO}. Requested SLO: {requestedSLO}");
+                        });                        
                     }
                 }
                 catch (Exception ex)
                 {
                     LogExceptions("WARNING!!! Unhandled Exception trapped while running test", ex);
+                }
+                finally {
+                    sw.Stop();                    
+                    Log($"{database}@{server}, SLO: {detectedSLO}, Query Execution Time: {sw.ElapsedMilliseconds}");
+                    sw.Reset();
                 }
 
                 Thread.Sleep(querySleepTime);
