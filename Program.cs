@@ -180,7 +180,7 @@ namespace Azure.SQLDB.Samples.Connection
             };
 
             Stopwatch sw = new Stopwatch();
-            while (true)
+            while(true)
             {
                 // try
                 // {
@@ -188,15 +188,19 @@ namespace Azure.SQLDB.Samples.Connection
                     {
                         conn.RetryLogicProvider = cnnProvider;
                         var cmd = new SqlCommand(query, conn);
-                        cmd.RetryLogicProvider = cmdProvider;
-                        sw.Start();
-                        conn.Open();
-                        //Thread.Sleep(waitMsec);
-                        detectedSLO = (string)cmd.ExecuteScalar();
-                        sw.Stop();
-                        Interlocked.Add(ref executionCount, 1);
-                        Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
-                        sw.Reset();
+                        
+                        detectedSLO = cmdProvider.Execute<string>(null,() =>
+                        {
+                            sw.Start();
+                            conn.Open();
+                            //Thread.Sleep(waitMsec);
+                            detectedSLO = (string)cmd.ExecuteScalar();
+                            sw.Stop();
+                            Interlocked.Add(ref executionCount, 1);
+                            Interlocked.Add(ref executionTime, (int)sw.ElapsedMilliseconds);
+                            sw.Reset();
+                            return detectedSLO;
+                        });
                     }
                 // }
                 // catch (Exception ex)
